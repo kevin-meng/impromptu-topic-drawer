@@ -1,0 +1,2357 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Table Topics · 即兴演讲抽题</title>
+<style>
+/* ============================================================
+   即兴演讲抽题器 — 左右分栏布局
+   左侧：规则 + 演讲结构速查（可折叠/可拖拽宽度）
+   右侧：卡片抽题主区（独立滚动）
+   ============================================================ */
+
+/* ---------- CSS 变量 ---------- */
+:root {
+  --bg-paper: #faf6f0;
+  --bg-paper-warm: #f3ebe0;
+  --bg-card: #ffffff;
+  --bg-sidebar: #f7f2ea;
+  --ink-dark: #1f2330;
+  --ink-mid: #4a4f63;
+  --ink-light: #8a8fa3;
+  --ink-muted: #b8bcc9;
+  --accent: #e07a5f;
+  --accent-deep: #c96247;
+  --accent-soft: #f8e4dd;
+  --green: #4a9e7c;
+  --yellow: #e0b040;
+  --red: #d64933;
+  --gray-used: #d1d3da;
+  --gray-used-text: #9a9eb0;
+  --border-light: #e8e2d8;
+  --border-sidebar: #e4ddd0;
+  --shadow-card: 0 4px 16px rgba(31, 35, 48, 0.08), 0 1px 3px rgba(31, 35, 48, 0.06);
+  --shadow-card-hover: 0 12px 32px rgba(31, 35, 48, 0.12), 0 2px 6px rgba(31, 35, 48, 0.08);
+  --shadow-modal: 0 30px 80px rgba(31, 35, 48, 0.18), 0 8px 24px rgba(31, 35, 48, 0.1);
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 8px;
+  --sidebar-width: 320px;
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------- 重置与基础 ---------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  color: var(--ink-dark);
+  background: var(--bg-paper);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 纸张质感背景 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(224, 122, 95, 0.05), transparent 70%);
+  z-index: -2;
+  pointer-events: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ---------- 整体布局 ---------- */
+.app {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---------- 左侧栏 ---------- */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: 260px;
+  max-width: 480px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-sidebar);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: width 0.3s var(--ease-out), min-width 0.3s var(--ease-out);
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  border-right: none;
+  overflow: visible;
+}
+
+.sidebar-inner {
+  width: var(--sidebar-width);
+  min-width: 260px;
+  max-width: 480px;
+  padding: 24px 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar.collapsed .sidebar-inner {
+  /* JS 控制透明度，避免与折叠状态冲突 */
+}
+
+/* 侧边栏品牌标题 */
+.sidebar-brand {
+  text-align: center;
+  padding: 6px 0 4px;
+  border-bottom: 1px solid var(--border-sidebar);
+  padding-bottom: 18px;
+  margin-bottom: -4px;
+}
+
+.sidebar-brand-eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.sidebar-brand-title {
+  font-family: "Georgia", "Songti SC", serif;
+  font-size: 1.25rem;
+  color: var(--ink-dark);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.sidebar-brand-title em {
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.sidebar-brand-sub {
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+/* 拖拽条 */
+.sidebar-resizer {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.2s ease;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.active {
+  background: var(--accent);
+  opacity: 0.3;
+}
+
+.sidebar.collapsed .sidebar-resizer {
+  display: none;
+}
+
+/* 折叠按钮（侧边栏顶部的水平把手） */
+.sidebar-toggle {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 64px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-sidebar);
+  color: var(--ink-light);
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  z-index: 20;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+  transition: all 0.25s var(--ease-out);
+  gap: 3px;
+}
+
+.sidebar-toggle::before,
+.sidebar-toggle::after {
+  content: "";
+  width: 14px;
+  height: 2px;
+  background: var(--border-sidebar);
+  border-radius: 1px;
+  transition: all 0.25s var(--ease-out);
+}
+
+.sidebar-toggle:hover {
+  height: 26px;
+  top: 2px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.sidebar-toggle:hover::before,
+.sidebar-toggle:hover::after {
+  background: rgba(255,255,255,0.5);
+}
+
+.sidebar-toggle-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+  transition: transform 0.3s var(--ease-out);
+}
+
+/* 折叠后：按钮变成圆形，贴在左上角 */
+.sidebar.collapsed .sidebar-toggle {
+  top: 16px;
+  left: 16px;
+  right: auto;
+  transform: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-sidebar);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.sidebar.collapsed .sidebar-toggle::before,
+.sidebar.collapsed .sidebar-toggle::after {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-toggle .sidebar-toggle-icon {
+  transform: rotate(90deg);
+  font-size: 1rem;
+}
+
+.sidebar.collapsed .sidebar-toggle:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  width: 40px;
+  height: 40px;
+  top: 16px;
+  left: 16px;
+  transform: none;
+  right: auto;
+}
+
+/* 侧边栏模块通用 */
+.sidebar-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 15px;
+  box-shadow: var(--shadow-card);
+}
+
+.sidebar-section-title {
+  font-family: "Georgia", "Songti SC", serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-dark);
+  margin-bottom: 10px;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-section-title-icon {
+  font-style: normal;
+  font-size: 1rem;
+}
+
+.sidebar-edit-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink-light);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.sidebar-edit-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  opacity: 1;
+}
+
+.section-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.section-collapse-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink-light);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-collapse-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  opacity: 1;
+}
+
+.section-collapse-icon {
+  display: inline-block;
+  transition: transform 0.3s var(--ease-out);
+  line-height: 1;
+}
+
+.rules-section.collapsed .section-collapse-icon {
+  transform: rotate(-90deg);
+}
+
+.rules-section-body {
+  overflow: hidden;
+  max-height: 500px;
+  transition: max-height 0.3s var(--ease-out), opacity 0.3s ease, margin 0.3s ease;
+  opacity: 1;
+}
+
+.rules-section.collapsed .rules-section-body {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rules-section-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.rules-section-header:hover .sidebar-section-title-icon {
+  transform: scale(1.1);
+}
+
+/* 时间规则模块 */
+.rules-section::before {
+  content: "";
+  display: block;
+  height: 3px;
+  margin: -18px -18px 14px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: linear-gradient(90deg, var(--green), var(--yellow), var(--red));
+}
+
+.rules-text {
+  font-size: 0.82rem;
+  color: var(--ink-mid);
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.rules-text strong {
+  color: var(--ink-dark);
+  font-weight: 600;
+}
+
+.tm-lights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tm-light {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-mid);
+}
+
+.tm-light-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.8), 0 1px 4px rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+
+.tm-light-dot.green { background: var(--green); }
+.tm-light-dot.yellow { background: var(--yellow); }
+.tm-light-dot.red { background: var(--red); }
+
+.tm-light-time {
+  font-weight: 600;
+  color: var(--ink-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 演讲结构速查模块 */
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip-item {
+  background: var(--bg-paper);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  transition: all 0.25s var(--ease-out);
+  cursor: default;
+}
+
+.tip-item:hover {
+  border-color: rgba(224, 122, 95, 0.35);
+  box-shadow: 0 3px 10px rgba(224, 122, 95, 0.08);
+}
+
+.tip-item-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.tip-item-name {
+  font-family: "Georgia", serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
+
+.tip-item-desc {
+  font-size: 0.68rem;
+  color: var(--ink-light);
+  white-space: nowrap;
+}
+
+.tip-item-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: tipstep;
+}
+
+.tip-item-steps li {
+  font-size: 0.74rem;
+  color: var(--ink-mid);
+  line-height: 1.5;
+  counter-increment: tipstep;
+}
+
+.tip-item-steps li::before {
+  content: counter(tipstep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-size: 0.6rem;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-right: 5px;
+  font-family: "Georgia", serif;
+  vertical-align: 1px;
+}
+
+.tip-item-steps li strong {
+  color: var(--ink-dark);
+  font-weight: 600;
+}
+
+/* ---------- 右侧主区 ---------- */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.main-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 36px 40px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 100%;
+  width: 100%;
+}
+
+/* ---------- 主标题区 ---------- */
+.header {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.header-eyebrow {
+  font-family: "Georgia", "Times New Roman", "Songti SC", serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.4em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+
+.header-title {
+  font-family: "Georgia", "Times New Roman", "Songti SC", "STSong", serif;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-dark);
+  line-height: 1.2;
+}
+
+.header-title em {
+  font-family: "Georgia", serif;
+  font-style: italic;
+  color: var(--accent);
+  font-weight: 400;
+}
+
+/* 主题大字展示 */
+.header-title.theme-display {
+  font-size: clamp(1.6rem, 3.2vw, 2.6rem);
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  padding: 0 20px;
+  max-width: 720px;
+  margin: 0 auto;
+  line-height: 1.35;
+}
+
+.header-title.theme-display.empty {
+  color: var(--ink-muted);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(1rem, 2vw, 1.3rem);
+}
+
+.header-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 12px auto 0;
+  max-width: 280px;
+}
+
+.header-divider::before,
+.header-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-light), transparent);
+}
+
+.header-divider-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  transform: rotate(45deg);
+}
+
+.progress {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: var(--ink-light);
+  letter-spacing: 0.04em;
+}
+
+.progress-num {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1em;
+}
+
+/* ---------- 规则说明一行 ---------- */
+.rule {
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--ink-light);
+  letter-spacing: 0.02em;
+}
+
+.rule strong {
+  color: var(--ink-mid);
+  font-weight: 500;
+}
+
+/* ---------- 抽题完成提示 ---------- */
+.all-done-note {
+  text-align: center;
+  color: var(--ink-light);
+  font-size: 0.9rem;
+  display: none;
+  padding: 8px;
+}
+
+.all-done-note.show { display: block; }
+
+.all-done-note strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- 抽题区（卡片网格） ---------- */
+.draw-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 列数 / 间距 / 宽度由 JS 按题量与可用面积计算（下方为基础回退值） */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* 卡片 */
+.card {
+  aspect-ratio: 3 / 4;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.3s var(--ease-out);
+}
+
+.card-inner {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: all 0.4s var(--ease-out);
+}
+
+.card:hover:not(.used):not(.disabled) {
+  transform: translateY(-5px);
+}
+
+.card:hover:not(.used):not(.disabled) .card-inner {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--accent);
+}
+
+/* 牌背四角装饰 */
+.card-corner {
+  position: absolute;
+  width: calc(var(--card-w, 130px) * 0.14);
+  height: calc(var(--card-w, 130px) * 0.14);
+  border-color: var(--accent);
+  opacity: 0.35;
+  transition: opacity 0.3s var(--ease-out);
+}
+
+.card:hover:not(.used) .card-corner {
+  opacity: 0.8;
+}
+
+.card-corner.tl { top: calc(var(--card-w, 130px) * 0.09); left: calc(var(--card-w, 130px) * 0.09); border-top: 2px solid; border-left: 2px solid; border-radius: 4px 0 0 0; }
+.card-corner.tr { top: calc(var(--card-w, 130px) * 0.09); right: calc(var(--card-w, 130px) * 0.09); border-top: 2px solid; border-right: 2px solid; border-radius: 0 4px 0 0; }
+.card-corner.bl { bottom: calc(var(--card-w, 130px) * 0.09); left: calc(var(--card-w, 130px) * 0.09); border-bottom: 2px solid; border-left: 2px solid; border-radius: 0 0 0 4px; }
+.card-corner.br { bottom: calc(var(--card-w, 130px) * 0.09); right: calc(var(--card-w, 130px) * 0.09); border-bottom: 2px solid; border-right: 2px solid; border-radius: 0 0 4px 0; }
+
+/* 编号 */
+.card-number {
+  position: relative;
+  z-index: 1;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: calc(var(--card-w, 130px) * 0.34);
+  font-weight: 300;
+  color: var(--ink-dark);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  transition: color 0.3s var(--ease-out);
+}
+
+.card-deco-line {
+  position: relative;
+  z-index: 1;
+  width: calc(var(--card-w, 130px) * 0.2);
+  height: 1px;
+  background: var(--accent);
+  margin-top: calc(var(--card-w, 130px) * 0.11);
+  opacity: 0.5;
+  transition: opacity 0.3s var(--ease-out), width 0.3s var(--ease-out);
+}
+
+.card:hover:not(.used) .card-deco-line {
+  opacity: 1;
+  width: calc(var(--card-w, 130px) * 0.28);
+}
+
+/* 已抽取状态 */
+.card.used .card-inner {
+  background: var(--bg-paper-warm);
+  border-color: var(--border-light);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.card.used .card-number {
+  color: var(--gray-used-text);
+  font-weight: 300;
+}
+
+.card.used .card-deco-line {
+  background: var(--gray-used);
+  opacity: 0.3;
+}
+
+.card.used .card-corner {
+  border-color: var(--gray-used);
+  opacity: 0.25;
+}
+
+.card.used {
+  cursor: pointer;
+}
+
+/* 已抽（灰）卡片悬停：提示仍可点击再次查看题目 */
+.card.used:hover .card-inner {
+  border-color: #c9c3b8;
+  box-shadow: 0 4px 14px rgba(31, 35, 48, 0.07);
+}
+
+.card-used-mark {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  background: var(--gray-used);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: #fff;
+  z-index: 2;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.3s var(--ease-out) 0.1s;
+}
+
+.card.used .card-used-mark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ---------- 操作栏 ---------- */
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.btn {
+  appearance: none;
+  border: 1.5px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--ink-mid);
+  padding: 11px 22px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out);
+  letter-spacing: 0.02em;
+  min-width: 96px;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(224, 122, 95, 0.12);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(224, 122, 95, 0.25);
+}
+
+.btn-icon {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 0.85em;
+  font-style: normal;
+}
+
+/* ---------- 模态框通用 ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 35, 48, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s var(--ease-out), visibility 0.35s var(--ease-out);
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-modal);
+  transform: translateY(30px) scale(0.95);
+  opacity: 0;
+  transition: transform 0.4s var(--ease-out), opacity 0.3s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+
+.modal-overlay.active .modal {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* ---------- 题目揭晓弹窗 ---------- */
+.topic-modal {
+  max-width: 1100px;
+  min-height: 560px;
+  background: var(--bg-card);
+}
+
+.topic-modal::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, var(--green), var(--yellow), var(--red));
+}
+
+.topic-modal-inner {
+  padding: 80px 72px 56px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.topic-modal-num {
+  font-family: "Georgia", serif;
+  font-size: 1.1rem;
+  letter-spacing: 0.4em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  font-style: italic;
+}
+
+.topic-modal-divider {
+  width: 64px;
+  height: 2px;
+  background: var(--accent);
+  margin-bottom: 40px;
+  border-radius: 2px;
+}
+
+.topic-modal-question {
+  font-family: "Georgia", "Songti SC", "STSong", serif;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink-dark);
+  letter-spacing: 0.02em;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.topic-modal-footer {
+  padding: 24px 72px 40px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.topic-modal-footer .btn {
+  padding: 14px 36px;
+  font-size: 1rem;
+  min-width: 140px;
+}
+
+.topic-modal-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--ink-light);
+  font-size: 1.8rem;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 2;
+}
+
+.topic-modal-close:hover {
+  background: var(--bg-paper-warm);
+  color: var(--ink-dark);
+}
+
+/* 揭晓动画 */
+.topic-reveal {
+  animation: topicReveal 0.6s var(--ease-out);
+}
+
+@keyframes topicReveal {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.topic-reveal .topic-modal-num { animation: fadeInUp 0.5s var(--ease-out) 0.1s both; }
+.topic-reveal .topic-modal-divider { animation: scaleIn 0.5s var(--ease-out) 0.2s both; }
+.topic-reveal .topic-modal-question { animation: fadeInUp 0.6s var(--ease-out) 0.3s both; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scaleX(0); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+
+/* ---------- 题库 / 规则编辑模态框 ---------- */
+.bank-modal {
+  max-width: 520px;
+  max-height: 80vh;
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-family: "Georgia", "Songti SC", serif;
+  font-size: 1.1rem;
+  color: var(--ink-dark);
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.modal-close {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--ink-light);
+  font-size: 1.4rem;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  background: var(--bg-paper-warm);
+  color: var(--ink-dark);
+}
+
+.modal-body {
+  padding: 20px 24px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-label {
+  font-size: 0.82rem;
+  color: var(--ink-mid);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+.modal-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 12px 14px;
+  background: var(--bg-paper);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--ink-dark);
+  font-family: inherit;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.modal-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.modal-input {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--bg-paper);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--ink-dark);
+  font-family: "Georgia", "Songti SC", serif;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  transition: border-color 0.2s ease;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.modal-input::placeholder {
+  color: var(--ink-muted);
+  font-family: inherit;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.modal-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modal-btn-secondary {
+  flex: 1;
+  min-width: 110px;
+  padding: 9px 14px;
+  font-size: 0.82rem;
+}
+
+.modal-tip {
+  font-size: 0.76rem;
+  color: var(--ink-light);
+  line-height: 1.6;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.modal-footer .btn {
+  min-width: 90px;
+  padding: 9px 18px;
+  font-size: 0.85rem;
+}
+
+.modal-message {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  display: none;
+}
+
+.modal-message.show { display: block; }
+
+.modal-message.error {
+  background: #fdecea;
+  border: 1px solid #f5c6c0;
+  color: #b73a28;
+}
+
+.modal-message.success {
+  background: #eaf5ef;
+  border: 1px solid #c3e4d4;
+  color: #2e7d5c;
+}
+
+.file-input { display: none; }
+
+/* ---------- 响应式 ---------- */
+
+/* 平板及以下：侧边栏改为底部抽屉？保持左右但收窄 */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 280px !important;
+    min-width: 280px;
+  }
+  .sidebar-inner {
+    width: 280px;
+    min-width: 280px;
+    padding: 20px 16px;
+  }
+  .main-inner {
+    padding: 28px 28px 32px;
+  }
+}
+
+/* 手机：隐藏侧边栏，由折叠按钮控制显示 */
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  html, body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  .sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid var(--border-sidebar);
+    position: relative;
+  }
+
+  .sidebar.collapsed {
+    display: none;
+  }
+
+  .sidebar-inner {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
+  .tips-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .main-content {
+    overflow: visible;
+  }
+
+  .main-inner {
+    padding: 20px 16px 24px;
+    gap: 16px;
+  }
+
+  .topic-modal {
+    max-width: 100%;
+    min-height: auto;
+  }
+
+  .topic-modal-inner {
+    padding: 48px 24px 32px;
+  }
+
+  .topic-modal-footer {
+    padding: 16px 24px 24px;
+  }
+
+  .topic-modal-footer .btn {
+    padding: 12px 24px;
+    font-size: 0.9rem;
+    min-width: 120px;
+  }
+
+  .actions {
+    position: sticky;
+    bottom: 0;
+    padding: 10px 8px;
+    margin: 0 -16px -16px;
+    background: linear-gradient(180deg, transparent, var(--bg-paper) 25%);
+    z-index: 10;
+  }
+
+  .btn {
+    flex: 1;
+    min-width: auto;
+  }
+}
+
+/* 手机更小屏 */
+@media (max-width: 480px) {
+  .tips-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 大屏 */
+@media (min-width: 1600px) {
+  .main-inner {
+    max-width: 1000px;
+  }
+}
+
+/* ---------- 减少动态效果 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .card, .card-inner, .card *, .btn, .modal, .modal-overlay, .sidebar {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- 左侧栏 -->
+  <aside class="sidebar" id="sidebar">
+    
+    <div class="sidebar-resizer" id="sidebar-resizer"></div>
+
+    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="折叠/展开侧边栏" title="折叠/展开侧边栏"><span class="sidebar-toggle-icon">↔</span></button>
+
+    <div class="sidebar-inner">
+
+      <!-- 侧边栏品牌标题 -->
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-eyebrow">Toastmasters</div>
+        <div class="sidebar-brand-title">即兴演讲 <em>抽题</em></div>
+        <div class="sidebar-brand-sub">Table Topics Drawer</div>
+      </div>
+
+      <!-- 时间规则 -->
+      <div class="sidebar-section rules-section" style="position: relative;">
+        <div class="sidebar-section-title rules-section-header" id="rules-section-header">
+          <span><span class="sidebar-section-title-icon">⏱</span> 时间规则</span>
+          <span class="section-title-actions">
+            <button class="sidebar-edit-btn" id="btn-edit-rules" title="编辑规则">✎</button>
+            <button class="section-collapse-btn" id="rules-collapse-btn" title="折叠/展开"><span class="section-collapse-icon">▾</span></button>
+          </span>
+        </div>
+        <div class="rules-section-body">
+        <div class="rules-text" id="tm-rules-text">头马（Toastmasters）即兴演讲规定发言时间为 <strong>1–2 分钟</strong>，低于 1 分钟或超过 2 分 30 秒均视为不合格。</div>
+        <div class="tm-lights">
+          <div class="tm-light">
+            <span class="tm-light-dot green"></span>
+            <span><span class="tm-light-time">1:00</span> 绿灯亮起</span>
+          </div>
+          <div class="tm-light">
+            <span class="tm-light-dot yellow"></span>
+            <span><span class="tm-light-time">1:30</span> 黄灯亮起</span>
+          </div>
+          <div class="tm-light">
+            <span class="tm-light-dot red"></span>
+            <span><span class="tm-light-time">2:00</span> 红灯（至 2:30）</span>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <!-- 演讲结构速查 -->
+      <div class="sidebar-section" style="position: relative;">
+        <div class="sidebar-section-title">
+          <span><span class="sidebar-section-title-icon">💡</span> 演讲结构速查</span>
+        </div>
+        <div class="tips-list">
+
+          <div class="tip-item">
+            <div class="tip-item-header">
+              <span class="tip-item-name">PREP</span>
+              <span class="tip-item-desc">经典即兴结构</span>
+            </div>
+            <ol class="tip-item-steps">
+              <li><strong>P</strong>oint · 亮明观点</li>
+              <li><strong>R</strong>eason · 给出理由</li>
+              <li><strong>E</strong>xample · 举例说明</li>
+              <li><strong>P</strong>oint · 重申观点</li>
+            </ol>
+          </div>
+
+          <div class="tip-item">
+            <div class="tip-item-header">
+              <span class="tip-item-name">STAR</span>
+              <span class="tip-item-desc">讲故事专用</span>
+            </div>
+            <ol class="tip-item-steps">
+              <li><strong>S</strong>ituation · 背景情境</li>
+              <li><strong>T</strong>ask · 任务挑战</li>
+              <li><strong>A</strong>ction · 行动方案</li>
+              <li><strong>R</strong>esult · 结果收获</li>
+            </ol>
+          </div>
+
+          <div class="tip-item">
+            <div class="tip-item-header">
+              <span class="tip-item-name">What-Why-How</span>
+              <span class="tip-item-desc">黄金圈法则</span>
+            </div>
+            <ol class="tip-item-steps">
+              <li><strong>What</strong> · 是什么</li>
+              <li><strong>Why</strong> · 为什么</li>
+              <li><strong>How</strong> · 怎么做</li>
+              <li>结尾升华 / 呼吁行动</li>
+            </ol>
+          </div>
+
+          <div class="tip-item">
+            <div class="tip-item-header">
+              <span class="tip-item-name">过去·现在·未来</span>
+              <span class="tip-item-desc">时间线叙事</span>
+            </div>
+            <ol class="tip-item-steps">
+              <li><strong>过去</strong> · 回顾经历与变化</li>
+              <li><strong>现在</strong> · 当下状态与思考</li>
+              <li><strong>未来</strong> · 展望与行动计划</li>
+              <li>收束到核心观点</li>
+            </ol>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- 右侧主区 -->
+  <main class="main-content">
+    <div class="main-inner">
+
+      <!-- 主标题区：本次演讲主题 -->
+      <header class="header">
+        <div class="header-eyebrow" id="theme-eyebrow">Table Topics · 即兴演讲</div>
+        <h1 class="header-title theme-display" id="theme-text" style="position: relative;">成长 · Growth</h1>
+        <div class="header-divider"><span class="header-divider-dot"></span></div>
+        <div class="progress">
+          已抽 <span class="progress-num" id="progress-drawn">0</span>
+          &nbsp;/&nbsp;
+          共 <span class="progress-num" id="progress-total">10</span> 题
+        </div>
+      </header>
+
+      <!-- 规则说明 -->
+      <div class="rule"></div>
+
+      <!-- 抽题完成提示 -->
+      <div class="all-done-note" id="all-done-note">
+        本轮 <strong>全部题目已抽完</strong>，点击「重新开始」开启新一轮
+      </div>
+
+      <!-- 抽题区 -->
+      <section class="draw-area">
+        <div class="card-grid" id="card-grid"><div class="card" data-pos="0"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">1</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="1"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">2</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="2"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">3</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="3"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">4</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="4"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">5</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="5"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">6</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="6"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">7</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="7"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">8</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="8"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">9</div><div class="card-deco-line"></div></div></div><div class="card" data-pos="9"><div class="card-inner"><span class="card-corner tl"></span><span class="card-corner tr"></span><span class="card-corner bl"></span><span class="card-corner br"></span><span class="card-used-mark">✓</span><div class="card-number">10</div><div class="card-deco-line"></div></div></div></div>
+      </section>
+
+      <!-- 操作栏 -->
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-restart">
+          <span class="btn-icon">↻</span>重新开始
+        </button>
+        <button class="btn" id="btn-undo" disabled="">
+          <span class="btn-icon">↶</span>撤销
+        </button>
+        <button class="btn" id="btn-bank">
+          <span class="btn-icon">≡</span>题库
+        </button>
+        <button class="btn" id="btn-save-page" title="把当前页面连同主题与题目保存为一个可离线打开的 HTML 文件">
+          <span class="btn-icon">↓</span>保存页面
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+</div>
+
+<!-- 题目揭晓弹窗 -->
+<div class="modal-overlay" id="topic-modal-overlay">
+  <div class="modal topic-modal" role="dialog" aria-modal="true">
+    <button class="topic-modal-close" id="topic-modal-close" aria-label="关闭">×</button>
+    <div class="topic-modal-inner" id="topic-modal-inner">
+      <div class="topic-modal-num">Card No.</div>
+      <div class="topic-modal-divider"></div>
+      <div class="topic-modal-question" id="topic-modal-question"></div>
+    </div>
+    <div class="topic-modal-footer">
+      <button class="btn btn-primary" id="topic-modal-btn-got">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 题库管理模态框 -->
+<div class="modal-overlay" id="bank-modal-overlay">
+  <div class="modal bank-modal" role="dialog" aria-modal="true" aria-labelledby="bank-modal-title">
+    <div class="modal-header">
+      <h2 class="modal-title" id="bank-modal-title">题库管理</h2>
+      <button class="modal-close" id="bank-modal-close" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom: 18px;">
+        <div class="modal-label">本次演讲主题</div>
+        <input type="text" class="modal-input" id="theme-input" placeholder="例如：成长 · Growth，留空则不显示主题" maxlength="100">
+      </div>
+      <div>
+        <div class="modal-label">题目列表（每行一题）</div>
+        <textarea class="modal-textarea" id="bank-textarea" spellcheck="false"></textarea>
+      </div>
+      <div class="modal-row">
+        <label class="btn modal-btn-secondary" for="csv-input">
+          <span class="btn-icon">↑</span>上传 CSV
+        </label>
+        <input type="file" id="csv-input" class="file-input" accept=".csv,text/csv">
+        <button class="btn modal-btn-secondary" id="btn-reset-default">
+          <span class="btn-icon">⟲</span>恢复默认
+        </button>
+      </div>
+      <div class="modal-message" id="modal-message"></div>
+      <div class="modal-tip">
+        每行一个题目，空行自动剔除，重复题目自动去重。
+        CSV 需为 UTF-8 编码、每行一题、无表头，多列时取第一列。
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="btn-cancel">取消</button>
+      <button class="btn btn-primary" id="btn-save">保存并重新开始</button>
+    </div>
+  </div>
+</div>
+
+<!-- 规则编辑模态框 -->
+<div class="modal-overlay" id="rules-modal-overlay">
+  <div class="modal bank-modal" role="dialog" aria-modal="true" aria-labelledby="rules-modal-title">
+    <div class="modal-header">
+      <h2 class="modal-title" id="rules-modal-title">编辑时间规则</h2>
+      <button class="modal-close" id="rules-modal-close" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-label">规则说明文字（支持 HTML 标签，如 &lt;strong&gt;加粗&lt;/strong&gt;）</div>
+        <textarea class="modal-textarea" id="rules-textarea" spellcheck="false" style="min-height: 120px;"></textarea>
+      </div>
+      <div class="modal-tip">
+        提示：可以使用 &lt;strong&gt;文字&lt;/strong&gt; 来加粗重点内容。修改后保存到本地。
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="btn-rules-cancel">取消</button>
+      <button class="btn btn-primary" id="btn-rules-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 内嵌会话数据：「保存页面」时写入，离线文件在新电脑上首次打开时优先读取 -->
+<script type="application/json" id="session-data"></script>
+
+<script>
+/* ============================================================
+   即兴演讲抽题器 — 逻辑
+   ============================================================ */
+
+(function () {
+  'use strict';
+
+  // ---------- 内嵌会话数据（「保存页面」时写入文件，优先级高于默认常量） ----------
+  var EMBEDDED = null;
+  try {
+    var sdEl = document.getElementById('session-data');
+    if (sdEl && sdEl.textContent && sdEl.textContent.trim()) {
+      var d = JSON.parse(sdEl.textContent);
+      if (d && typeof d === 'object' && Array.isArray(d.bank) &&
+          d.bank.length >= 2 &&
+          d.bank.every(function (t) { return typeof t === 'string' && t.trim() !== ''; })) {
+        EMBEDDED = d;
+      }
+    }
+  } catch (e) { EMBEDDED = null; }
+
+  // 每个保存出的文件使用独立存储命名空间，避免与原页面或其他副本互相覆盖
+  var SESSION_ID = EMBEDDED ? (EMBEDDED.id || 'saved') : '';
+  function skey(base) {
+    return base + (SESSION_ID ? '_' + SESSION_ID : '_v1');
+  }
+
+  // ---------- 常量 ----------
+  var STORAGE_KEY = skey('impromptu_topics_bank');
+  var RULES_KEY = skey('impromptu_rules_text');
+  var SIDEBAR_KEY = 'impromptu_sidebar_width_v1';
+  var THEME_KEY = skey('impromptu_session_theme');
+
+  // 初始主题（可在「题库」中修改）
+  var DEFAULT_THEME = (EMBEDDED && typeof EMBEDDED.theme === 'string') ? EMBEDDED.theme : '成长 · Growth';
+
+  var DEFAULT_RULES = (EMBEDDED && typeof EMBEDDED.rules === 'string' && EMBEDDED.rules.trim() !== '')
+    ? EMBEDDED.rules
+    : '头马（Toastmasters）即兴演讲规定发言时间为 <strong>1–2 分钟</strong>，低于 1 分钟或超过 2 分 30 秒均视为不合格。';
+
+  // 初始题库：围绕初始主题「成长 · Growth」的 10 个题目
+  var DEFAULT_BANK = EMBEDDED
+    ? EMBEDDED.bank.slice()
+    : [
+      '分享一次让你成长最快的失败经历。',
+      '如果能给十年前的自己一句忠告，你会说什么？',
+      '你人生中最勇敢的一次选择是什么？',
+      '哪本书或哪部影片改变了你看世界的方式？',
+      '讲一位深深影响过你的人，TA 教会了你什么？',
+      '最近一次走出舒适区，是怎样的感受？',
+      '成长路上，「放下」与「坚持」哪个更难？',
+      '三年后的你，希望自己成为什么样的人？',
+      '有人说成长是与不完美和解，你怎么看？',
+      '分享一个你坚持至今的小习惯，它带给你什么？'
+    ];
+
+  // ---------- 状态 ----------
+  var bank = [];
+  var shuffled = [];
+  var drawn = [];
+  var isAnimating = false;
+
+  // ---------- DOM ----------
+  var elGrid = document.getElementById('card-grid');
+  var drawArea = document.querySelector('.draw-area');
+  var elProgressDrawn = document.getElementById('progress-drawn');
+  var elProgressTotal = document.getElementById('progress-total');
+  var elAllDoneNote = document.getElementById('all-done-note');
+  var btnRestart = document.getElementById('btn-restart');
+  var btnUndo = document.getElementById('btn-undo');
+  var btnBank = document.getElementById('btn-bank');
+  var btnSavePage = document.getElementById('btn-save-page');
+
+  // 题目弹窗
+  var topicOverlay = document.getElementById('topic-modal-overlay');
+  var topicClose = document.getElementById('topic-modal-close');
+  var topicBtnGot = document.getElementById('topic-modal-btn-got');
+  var topicInner = document.getElementById('topic-modal-inner');
+  var topicQuestion = document.getElementById('topic-modal-question');
+
+  // 题库弹窗
+  var bankOverlay = document.getElementById('bank-modal-overlay');
+  var bankClose = document.getElementById('bank-modal-close');
+  var btnCancel = document.getElementById('btn-cancel');
+  var btnSave = document.getElementById('btn-save');
+  var bankTextarea = document.getElementById('bank-textarea');
+  var themeInput = document.getElementById('theme-input');
+  var csvInput = document.getElementById('csv-input');
+  var btnResetDefault = document.getElementById('btn-reset-default');
+  var modalMessage = document.getElementById('modal-message');
+
+  // 主题
+  var elThemeText = document.getElementById('theme-text');
+  var elThemeEyebrow = document.getElementById('theme-eyebrow');
+
+  // 规则编辑
+  var btnEditRules = document.getElementById('btn-edit-rules');
+  var elRulesText = document.getElementById('tm-rules-text');
+  var rulesOverlay = document.getElementById('rules-modal-overlay');
+  var rulesClose = document.getElementById('rules-modal-close');
+  var rulesTextarea = document.getElementById('rules-textarea');
+  var btnRulesCancel = document.getElementById('btn-rules-cancel');
+  var btnRulesSave = document.getElementById('btn-rules-save');
+  var rulesSection = document.querySelector('.rules-section');
+  var rulesCollapseBtn = document.getElementById('rules-collapse-btn');
+  var rulesSectionHeader = document.getElementById('rules-section-header');
+  var RULES_COLLAPSE_KEY = 'impromptu_rules_collapsed_v1';
+
+  // 侧边栏
+  var sidebar = document.getElementById('sidebar');
+  var sidebarToggle = document.getElementById('sidebar-toggle');
+  var sidebarResizer = document.getElementById('sidebar-resizer');
+  var sidebarInner = document.querySelector('.sidebar-inner');
+
+  // ---------- 工具 ----------
+  function shuffleArray(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  }
+
+  function storageAvailable() {
+    try {
+      var t = '__t__';
+      localStorage.setItem(t, t);
+      localStorage.removeItem(t);
+      return true;
+    } catch (e) { return false; }
+  }
+  var canStore = storageAvailable();
+
+  // ---------- 题库 ----------
+  function loadBank() {
+    if (canStore) {
+      try {
+        var saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          var parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length >= 2) {
+            bank = parsed;
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+    bank = DEFAULT_BANK.slice();
+  }
+
+  function saveBank() {
+    if (canStore) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bank)); } catch (e) {}
+    }
+  }
+
+  // ---------- 主题 ----------
+  var currentTheme = DEFAULT_THEME;
+
+  function loadTheme() {
+    if (canStore) {
+      try {
+        var saved = localStorage.getItem(THEME_KEY);
+        if (saved !== null) {
+          currentTheme = saved;
+        }
+      } catch (e) {}
+    }
+    renderTheme();
+  }
+
+  function saveTheme(theme) {
+    currentTheme = theme;
+    if (canStore) {
+      try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+    }
+    renderTheme();
+  }
+
+  function renderTheme() {
+    if (currentTheme && currentTheme.trim() !== '') {
+      elThemeText.textContent = currentTheme;
+      elThemeText.classList.remove('empty');
+      elThemeEyebrow.textContent = '本次主题 · Theme';
+      document.title = '即兴演讲 · ' + currentTheme.trim();
+    } else {
+      elThemeText.textContent = '点击「题库」设置本次演讲主题';
+      elThemeText.classList.add('empty');
+      elThemeEyebrow.textContent = 'Table Topics · 即兴演讲';
+      document.title = 'Table Topics · 即兴演讲抽题';
+    }
+  }
+
+  // ---------- 规则 ----------
+  function loadRules() {
+    if (canStore) {
+      try {
+        var saved = localStorage.getItem(RULES_KEY);
+        if (saved && saved.trim() !== '') {
+          elRulesText.innerHTML = saved;
+          return;
+        }
+      } catch (e) {}
+    }
+    elRulesText.innerHTML = DEFAULT_RULES;
+  }
+
+  function saveRules(html) {
+    if (canStore) {
+      try { localStorage.setItem(RULES_KEY, html); } catch (e) {}
+    }
+  }
+
+  function openRulesModal() {
+    rulesTextarea.value = elRulesText.innerHTML;
+    rulesOverlay.classList.add('active');
+    setTimeout(function () { rulesTextarea.focus(); }, 200);
+  }
+
+  function closeRulesModal() {
+    rulesOverlay.classList.remove('active');
+  }
+
+  function handleRulesSave() {
+    var html = rulesTextarea.value.trim();
+    if (html === '') html = DEFAULT_RULES;
+    elRulesText.innerHTML = html;
+    saveRules(html);
+    closeRulesModal();
+  }
+
+  // ---------- 规则模块折叠 ----------
+  function toggleRulesCollapse() {
+    rulesSection.classList.toggle('collapsed');
+    if (canStore) {
+      try {
+        localStorage.setItem(RULES_COLLAPSE_KEY, rulesSection.classList.contains('collapsed') ? '1' : '0');
+      } catch (e) {}
+    }
+  }
+
+  function loadRulesCollapse() {
+    if (canStore) {
+      try {
+        var saved = localStorage.getItem(RULES_COLLAPSE_KEY);
+        if (saved === '1') {
+          rulesSection.classList.add('collapsed');
+        }
+      } catch (e) {}
+    }
+  }
+
+  // ---------- 侧边栏拖拽与折叠 ----------
+  function initSidebar() {
+    // 读取保存的宽度
+    if (canStore) {
+      try {
+        var savedW = localStorage.getItem(SIDEBAR_KEY);
+        if (savedW) {
+          var w = parseInt(savedW, 10);
+          if (w >= 260 && w <= 480) {
+            setSidebarWidth(w);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 折叠按钮
+    sidebarToggle.addEventListener('click', toggleSidebar);
+
+    // 拖拽
+    var isDragging = false;
+    var startX = 0;
+    var startWidth = 0;
+
+    sidebarResizer.addEventListener('mousedown', function (e) {
+      isDragging = true;
+      startX = e.clientX;
+      startWidth = sidebar.offsetWidth;
+      sidebarResizer.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+      if (!isDragging) return;
+      var diff = e.clientX - startX;
+      var newWidth = startWidth + diff;
+      if (newWidth < 260) newWidth = 260;
+      if (newWidth > 480) newWidth = 480;
+      setSidebarWidth(newWidth);
+    });
+
+    document.addEventListener('mouseup', function () {
+      if (!isDragging) return;
+      isDragging = false;
+      sidebarResizer.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // 保存宽度
+      if (canStore) {
+        try { localStorage.setItem(SIDEBAR_KEY, sidebar.offsetWidth + ''); } catch (e) {}
+      }
+    });
+  }
+
+  function setSidebarWidth(w) {
+    sidebar.style.width = w + 'px';
+    sidebar.style.flexBasis = w + 'px';
+    sidebarInner.style.width = w + 'px';
+    sidebarInner.style.flexBasis = w + 'px';
+  }
+
+  var SIDEBAR_COLLAPSE_KEY = 'impromptu_sidebar_collapsed_v1';
+  var savedSidebarWidth = null;
+
+  function toggleSidebar() {
+    var isCollapsed = sidebar.classList.contains('collapsed');
+    if (isCollapsed) {
+      // 展开
+      var w = savedSidebarWidth || 320;
+      setSidebarWidth(w);
+      sidebar.classList.remove('collapsed');
+      // 稍等动画开始后再显示内容
+      setTimeout(function () {
+        sidebarInner.style.opacity = '';
+        sidebarInner.style.pointerEvents = '';
+      }, 150);
+    } else {
+      // 折叠：保存当前宽度
+      savedSidebarWidth = sidebar.offsetWidth;
+      sidebar.classList.add('collapsed');
+      // 先隐藏内容
+      sidebarInner.style.opacity = '0';
+      sidebarInner.style.pointerEvents = 'none';
+      // 然后宽度收为0
+      setTimeout(function () {
+        sidebar.style.width = '0px';
+        sidebar.style.flexBasis = '0px';
+        sidebarInner.style.width = '0px';
+        sidebarInner.style.flexBasis = '0px';
+      }, 50);
+    }
+    // 保存折叠状态
+    if (canStore) {
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSE_KEY, !isCollapsed ? '1' : '0');
+      } catch (e) {}
+    }
+  }
+
+  function loadSidebarCollapse() {
+    if (canStore) {
+      try {
+        var saved = localStorage.getItem(SIDEBAR_COLLAPSE_KEY);
+        if (saved === '1') {
+          // 初始折叠
+          savedSidebarWidth = sidebar.offsetWidth || 320;
+          sidebar.classList.add('collapsed');
+          sidebarInner.style.opacity = '0';
+          sidebarInner.style.pointerEvents = 'none';
+          sidebar.style.width = '0px';
+          sidebar.style.flexBasis = '0px';
+          sidebarInner.style.width = '0px';
+          sidebarInner.style.flexBasis = '0px';
+        }
+      } catch (e) {}
+    }
+  }
+
+  // ---------- 渲染 ----------
+  function renderCards() {
+    elGrid.innerHTML = '';
+    for (var i = 0; i < shuffled.length; i++) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.pos = i;
+      card.innerHTML =
+        '<div class="card-inner">' +
+          '<span class="card-corner tl"></span>' +
+          '<span class="card-corner tr"></span>' +
+          '<span class="card-corner bl"></span>' +
+          '<span class="card-corner br"></span>' +
+          '<span class="card-used-mark">✓</span>' +
+          '<div class="card-number">' + (i + 1) + '</div>' +
+          '<div class="card-deco-line"></div>' +
+        '</div>';
+      card.addEventListener('click', handleCardClick);
+      elGrid.appendChild(card);
+    }
+  }
+
+  function updateProgress() {
+    elProgressDrawn.textContent = drawn.length;
+    elProgressTotal.textContent = bank.length;
+  }
+
+  function updateUndoBtn() {
+    btnUndo.disabled = drawn.length === 0;
+  }
+
+  function updateAllDoneNote() {
+    if (drawn.length === shuffled.length && shuffled.length > 0) {
+      elAllDoneNote.classList.add('show');
+    } else {
+      elAllDoneNote.classList.remove('show');
+    }
+  }
+
+  function renderAll() {
+    renderCards();
+    for (var i = 0; i < drawn.length; i++) {
+      var c = elGrid.querySelector('.card[data-pos="' + drawn[i] + '"]');
+      if (c) c.classList.add('used');
+    }
+    updateProgress();
+    updateUndoBtn();
+    updateAllDoneNote();
+    layoutGrid();
+  }
+
+  // ---------- 自适应对称网格 ----------
+  // 卡片尺寸随题目数量与可用展示面积自适应，并限制在 [CARD_MIN_W, CARD_MAX_W]
+  var CARD_MIN_W = 80;
+  var CARD_MAX_W = 200;
+
+  function isMobileLayout() {
+    return window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false;
+  }
+
+  function computeGrid(n, availW) {
+    // 在宽度允许的列数范围内，优先选择能把卡片排满整行（对称）的列数
+    var best = null;
+    for (var c = 1; c <= n; c++) {
+      var gap = Math.max(10, Math.min(22, availW / c * 0.14));
+      var w = (availW - gap * (c - 1)) / c;
+      if (w > CARD_MAX_W) w = CARD_MAX_W;
+      if (w < CARD_MIN_W) break; // 列数更多只会更窄
+      gap = Math.max(10, Math.min(22, w * 0.14));
+      w = (availW - gap * (c - 1)) / c;
+      if (w > CARD_MAX_W) w = CARD_MAX_W;
+      if (w < CARD_MIN_W) break;
+
+      var rows = Math.ceil(n / c);
+      var lastRow = n - (rows - 1) * c;
+      // 评分：末行缺卡重罚（对称优先）；行多于列适度惩罚；微倾向更大的卡片
+      var score = (c - lastRow) * 6;
+      score += rows > c ? (rows - c) * 3 : (c - rows);
+      score += (CARD_MAX_W - w) * 0.001;
+      if (!best || score < best.score) {
+        best = { c: c, w: w, gap: gap, rows: rows, score: score };
+      }
+    }
+    if (!best) best = { c: 1, w: CARD_MIN_W, gap: 10, rows: n, score: 0 };
+    return best;
+  }
+
+  function layoutGrid() {
+    var n = shuffled.length;
+    if (n < 1) return;
+
+    var availW = drawArea.clientWidth - 4;
+    if (availW < 100) availW = 100;
+
+    // 手机端页面整体滚动，只按宽度自适应；桌面端同时按可用高度收缩
+    var fitHeight = !isMobileLayout();
+    var availH = fitHeight ? drawArea.clientHeight - 8 : 0;
+
+    var g = computeGrid(n, availW);
+
+    // 高度不足时等比缩小卡片宽度（但不低于最小限制）
+    if (fitHeight && availH > 0) {
+      var totalH = g.rows * g.w * 4 / 3 + (g.rows - 1) * g.gap;
+      if (totalH > availH) {
+        var wH = (availH - (g.rows - 1) * g.gap) / g.rows * 3 / 4;
+        if (wH < g.w) g.w = Math.max(CARD_MIN_W, wH);
+      }
+    }
+
+    elGrid.style.gridTemplateColumns = 'repeat(' + g.c + ', minmax(0, 1fr))';
+    elGrid.style.gap = g.gap + 'px';
+    elGrid.style.width = Math.round(g.c * g.w + (g.c - 1) * g.gap) + 'px';
+    elGrid.style.maxWidth = '100%';
+    elGrid.style.setProperty('--card-w', Math.round(g.w) + 'px');
+  }
+
+  function initGridAutoLayout() {
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () { layoutGrid(); }).observe(drawArea);
+    } else {
+      window.addEventListener('resize', layoutGrid);
+    }
+    window.addEventListener('orientationchange', layoutGrid);
+  }
+
+  // ---------- 交互 ----------
+  function handleCardClick(e) {
+    if (isAnimating) return;
+
+    var card = e.currentTarget;
+    var pos = parseInt(card.dataset.pos, 10);
+    var topic = bank[shuffled[pos]];
+
+    // 已抽过的卡片变灰，但仍可再次点击查看题目（避免误关闭后无法再看）
+    if (card.classList.contains('used')) {
+      showTopicModal(pos + 1, topic);
+      return;
+    }
+
+    isAnimating = true;
+    card.classList.add('used');
+    drawn.push(pos);
+
+    showTopicModal(pos + 1, topic);
+
+    updateProgress();
+    updateUndoBtn();
+    updateAllDoneNote();
+
+    setTimeout(function () { isAnimating = false; }, 300);
+  }
+
+  function showTopicModal(num, text) {
+    var numEl = topicInner.querySelector('.topic-modal-num');
+    if (numEl) numEl.textContent = 'Card No. ' + num;
+    topicQuestion.textContent = text;
+
+    topicInner.classList.remove('topic-reveal');
+    void topicInner.offsetWidth;
+    topicInner.classList.add('topic-reveal');
+
+    topicOverlay.classList.add('active');
+  }
+
+  function closeTopicModal() {
+    topicOverlay.classList.remove('active');
+  }
+
+  function restartRound() {
+    shuffled = shuffleArray(bank.map(function (_, i) { return i; }));
+    drawn = [];
+    isAnimating = false;
+    closeTopicModal();
+    renderAll();
+  }
+
+  function handleUndo() {
+    if (drawn.length === 0 || isAnimating) return;
+
+    var lastPos = drawn.pop();
+    var card = elGrid.querySelector('.card[data-pos="' + lastPos + '"]');
+    if (card) card.classList.remove('used');
+
+    closeTopicModal();
+    updateProgress();
+    updateUndoBtn();
+    updateAllDoneNote();
+  }
+
+  // ---------- 题库模态框 ----------
+  function openBankModal() {
+    bankTextarea.value = bank.join('\n');
+    themeInput.value = currentTheme || '';
+    hideMessage();
+    bankOverlay.classList.add('active');
+    setTimeout(function () { themeInput.focus(); }, 200);
+  }
+
+  function closeBankModal() {
+    bankOverlay.classList.remove('active');
+  }
+
+  function showMessage(text, type) {
+    modalMessage.textContent = text;
+    modalMessage.className = 'modal-message show ' + type;
+  }
+
+  function hideMessage() {
+    modalMessage.className = 'modal-message';
+    modalMessage.textContent = '';
+  }
+
+  function parseTextarea() {
+    var lines = bankTextarea.value.split(/\r?\n/);
+    var seen = {};
+    var result = [];
+    var dup = 0, empty = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (t === '') { empty++; continue; }
+      if (seen[t]) { dup++; continue; }
+      seen[t] = true;
+      result.push(t);
+    }
+    return { topics: result, dupCount: dup, emptyCount: empty };
+  }
+
+  function handleSave() {
+    var parsed = parseTextarea();
+    if (parsed.topics.length < 2) {
+      showMessage('至少需要 2 个有效题目才能开始抽题。', 'error');
+      return;
+    }
+    bank = parsed.topics;
+    saveBank();
+    saveTheme(themeInput.value.trim());
+    closeBankModal();
+    restartRound();
+  }
+
+  function handleCsvUpload(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      try {
+        var text = ev.target.result;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        var lines = text.split(/\r?\n/);
+        var topics = [];
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].trim();
+          if (line === '') continue;
+          var firstCol = line.split(',')[0];
+          firstCol = firstCol.replace(/^"|"$/g, '').trim();
+          if (firstCol) topics.push(firstCol);
+        }
+        if (!topics.length) {
+          showMessage('CSV 中没有有效题目。请确认 UTF-8 编码、每行一题、无表头。', 'error');
+          return;
+        }
+        bankTextarea.value = topics.join('\n');
+        showMessage('已载入 ' + topics.length + ' 道题目，确认后点击保存。', 'success');
+      } catch (err) {
+        showMessage('CSV 解析失败：' + err.message, 'error');
+      }
+    };
+    reader.onerror = function () {
+      showMessage('文件读取失败，请重试。', 'error');
+    };
+    reader.readAsText(file, 'UTF-8');
+    csvInput.value = '';
+  }
+
+  function handleResetDefault() {
+    bankTextarea.value = DEFAULT_BANK.join('\n');
+    showMessage('已载入默认题库，确认后点击保存。', 'success');
+  }
+
+  // ---------- 保存为独立 HTML ----------
+  function sanitizeFilename(name) {
+    return name
+      .replace(/[\\\/:*?"<>|\x00-\x1f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\.+$/, '');
+  }
+
+  function handleSavePage() {
+    var theme = (currentTheme || '').trim();
+
+    // 内嵌当前主题/题目/规则：保存出的文件在新电脑上打开即用，不依赖 localStorage 与网络
+    var data = {
+      v: 1,
+      id: 's' + Date.now().toString(36) + Math.floor(Math.random() * 10000).toString(36),
+      theme: theme,
+      bank: bank.slice(),
+      rules: elRulesText.innerHTML
+    };
+
+    var clone = document.documentElement.cloneNode(true);
+
+    // 清理运行时状态
+    var overlays = clone.querySelectorAll('.modal-overlay');
+    for (var i = 0; i < overlays.length; i++) overlays[i].classList.remove('active');
+    var cloneGrid = clone.querySelector('#card-grid');
+    if (cloneGrid) cloneGrid.innerHTML = '';
+
+    var sd = clone.querySelector('#session-data');
+    if (sd) sd.textContent = JSON.stringify(data).replace(/</g, '\\u003c');
+
+    var titleEl = clone.querySelector('title');
+    if (titleEl) titleEl.textContent = theme ? ('即兴演讲 · ' + theme) : 'Table Topics · 即兴演讲抽题';
+
+    var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (theme ? ('即兴演讲-' + sanitizeFilename(theme)) : '即兴演讲') + '.html';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 1000);
+
+    // 按钮反馈
+    var original = btnSavePage.innerHTML;
+    btnSavePage.disabled = true;
+    btnSavePage.innerHTML = '<span class="btn-icon">✓</span>已保存';
+    setTimeout(function () {
+      btnSavePage.innerHTML = original;
+      btnSavePage.disabled = false;
+    }, 2000);
+  }
+
+  // ---------- 事件 ----------
+  btnRestart.addEventListener('click', restartRound);
+  btnUndo.addEventListener('click', handleUndo);
+  btnBank.addEventListener('click', openBankModal);
+  btnSavePage.addEventListener('click', handleSavePage);
+
+  // 题目弹窗
+  topicClose.addEventListener('click', closeTopicModal);
+  topicBtnGot.addEventListener('click', closeTopicModal);
+  topicOverlay.addEventListener('click', function (e) {
+    if (e.target === topicOverlay) closeTopicModal();
+  });
+
+  // 题库弹窗
+  bankClose.addEventListener('click', closeBankModal);
+  btnCancel.addEventListener('click', closeBankModal);
+  btnSave.addEventListener('click', handleSave);
+  csvInput.addEventListener('change', handleCsvUpload);
+  btnResetDefault.addEventListener('click', handleResetDefault);
+  bankOverlay.addEventListener('click', function (e) {
+    if (e.target === bankOverlay) closeBankModal();
+  });
+
+  // 规则弹窗
+  btnEditRules.addEventListener('click', function (e) {
+    e.stopPropagation();
+    openRulesModal();
+  });
+  rulesClose.addEventListener('click', closeRulesModal);
+  btnRulesCancel.addEventListener('click', closeRulesModal);
+  btnRulesSave.addEventListener('click', handleRulesSave);
+  rulesOverlay.addEventListener('click', function (e) {
+    if (e.target === rulesOverlay) closeRulesModal();
+  });
+
+  // 规则模块折叠
+  rulesSectionHeader.addEventListener('click', function (e) {
+    // 点击编辑按钮不触发折叠
+    if (e.target.closest('#btn-edit-rules')) return;
+    toggleRulesCollapse();
+  });
+  rulesCollapseBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleRulesCollapse();
+  });
+
+  // ESC 关闭
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (topicOverlay.classList.contains('active')) {
+      closeTopicModal();
+    } else if (bankOverlay.classList.contains('active')) {
+      closeBankModal();
+    } else if (rulesOverlay.classList.contains('active')) {
+      closeRulesModal();
+    }
+  });
+
+  // ---------- 初始化 ----------
+  loadBank();
+  loadRules();
+  loadTheme();
+  loadRulesCollapse();
+  initSidebar();
+  loadSidebarCollapse();
+  restartRound();
+  initGridAutoLayout();
+
+})();
+</script>
+
+
+
+
+</body></html>
