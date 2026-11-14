@@ -6,7 +6,7 @@
 
 ## 🌐 在线使用
 
-无需下载，直接访问部署页面：**[即兴演讲抽题器 · 在线版](https://impromptu-topic--jz8cns1yto-8x9cqm6p3g.preview.iga-pages.com?iga_token=38a96df95ac0490fb9206422c478a1e3&iga_time=1794155848)**
+无需下载，直接访问部署页面：**[即兴演讲抽题器 · 在线版](https://impromptu-topic--jz8cns1yto-x1sw6gdxb2.preview.iga-pages.com?iga_token=a27b48106135f7a2d34a029f19cb1a5d&iga_time=1794791488)**
 
 ## ✨ 功能特性
 
